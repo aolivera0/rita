@@ -277,15 +277,100 @@ que avanzan en paralelo: **datos y clasificador** (el núcleo evaluado en el cur
 | 4. Telefonía y panel | 5–7 | Conexión con un número real; panel con historial, corrección de etiquetas, lista de números y exportación | Una llamada real aparece clasificada en el panel |
 | 5. Evaluación final | 7–8 | Una sola corrida sobre los conjuntos de prueba, intervalos de confianza, informe y demostración | Todas las cifras de «Cómo vamos a saber que funciona» están reportadas |
 
-### Reparto sugerido
+### Frentes de trabajo
+
+Cada frente le pertenece a una persona. Para trabajar en paralelo, los frentes solo se
+comunican a través de **dos formatos que se acuerdan en la semana 1** (ver abajo). Hasta
+que la pieza real de otro frente esté lista, cada uno trabaja con datos de ejemplo en ese
+formato.
 
 | Frente | Responsable | Fases |
 |---|---|---|
-| Datos y clasificador | Por definir | 0, 1, 2, 5 |
-| Agente de voz | Por definir | 3, 5 |
-| Backend, panel y telefonía | Por definir | 0, 4, 5 |
+| 1. Datos y clasificador | Por definir | 0, 1, 2, 5 |
+| 2. Agente de voz | Por definir | 3, 5 |
+| 3. Backend, panel y telefonía | Por definir | 0, 4, 5 |
 
-Las tres personas etiquetan: cada conversación la etiquetan dos de ellas.
+#### Frente 1 · Datos y clasificador
+
+*¿Qué tipo de llamada fue y qué tan seguros estamos?*
+
+- Guía de etiquetado y guiones por categoría.
+- Variaciones generadas con un modelo de lenguaje y revisadas a mano.
+- Coordinación del etiquetado doble, kappa de Cohen y partición por guion.
+- Las tres líneas base, Kev sin ajuste, calibración, prueba con opciones barajadas y
+  casos de inyección; ajuste LoRA si hace falta.
+- **Entrega:** una función o comando `clasificar(llamada) → clasificación` que corre por
+  lotes, y la tabla de resultados.
+- **Mientras tanto:** trabaja con el texto de los guiones hasta que el Frente 2 entregue
+  las transcripciones automáticas.
+
+#### Frente 2 · Agente de voz
+
+*¿Cómo se atiende la llamada y se reúnen los tres datos?*
+
+- Flujo en tiempo real: detección de voz → voz a texto → agente → texto a voz (Pipecat,
+  llamada desde el navegador).
+- Prompt del agente y defensas contra la manipulación.
+- Formulario fijo como línea base del agente.
+- Medición de latencia (mediana y percentil 95) y de la tasa de error de palabras.
+- Conversión de los guiones del Frente 1 en audio con varias voces y ruido, y su
+  transcripción automática (ya maneja las herramientas de voz).
+- Voz clonada, opcional.
+- **Entrega:** cada llamada terminada se guarda en el formato *Llamada*.
+- **Mientras tanto:** no depende de nadie; empieza desde el primer día con el navegador.
+
+#### Frente 3 · Backend, panel y telefonía
+
+*¿Dónde queda todo y cómo lo ve el usuario?*
+
+- API con FastAPI y base de datos SQLite según los dos formatos.
+- Panel para celular: lista de llamadas, detalle con transcripción y pistas, corrección
+  de etiquetas, lista de números sospechosos y exportación.
+- Cloudflare Tunnel, conexión de Twilio con el flujo del Frente 2 y pruebas del desvío
+  por ocupado y por no contesta con los operadores.
+- Borrado de registros (Ley 1581).
+- Montaje de Label Studio o de la hoja de etiquetado para el Frente 1.
+- **Entrega:** una llamada real que aparece clasificada en el panel.
+- **Mientras tanto:** trabaja con llamadas y clasificaciones de ejemplo en los dos
+  formatos.
+
+#### Formatos compartidos
+
+**Llamada**, la produce el Frente 2:
+
+```json
+{
+  "id": "…",
+  "numero": "+57…",
+  "inicio": "…",
+  "fin": "…",
+  "turnos": [{"hablante": "llamante|rita", "texto": "…", "t_inicio": 0.0, "t_fin": 2.1}],
+  "datos": {"nombre": "…", "entidad": "…", "motivo": "…"},
+  "latencias_ms": [820, 1140]
+}
+```
+
+**Clasificación**, la produce el Frente 1:
+
+```json
+{
+  "llamada_id": "…",
+  "modelo": "kev-4b|regresion",
+  "etiqueta": "estafa",
+  "confianza": 0.87,
+  "probabilidades": {"estafa": 0.87, "cobranza": 0.05},
+  "pistas": {"pide_datos_bancarios": 0.92, "presiona_urgencia": 0.71}
+}
+```
+
+El Frente 3 guarda y muestra los dos formatos sin necesidad de saber cómo se producen.
+
+#### Trabajo compartido
+
+- **Etiquetado:** cada conversación la etiquetan dos de las tres personas, repartiendo la
+  carga para que nadie se quede esperando.
+- **Evaluación final (semanas 7–8):** cada frente reporta sus cifras y el informe se arma
+  en conjunto.
 
 ### Qué se recorta si no alcanza el tiempo
 
