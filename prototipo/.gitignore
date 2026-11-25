@@ -1,0 +1,4 @@
+.venv/
+modelos/
+rita.db
+__pycache__/

@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+faster-whisper
+av<16  # faster-whisper 1.2 no funciona con PyAV 16 o superior
+piper-tts
+scikit-learn
+numpy
+httpx

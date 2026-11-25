@@ -12,6 +12,10 @@ Proyecto final de *Introducción a los Sistemas Inteligentes* (UNAL, 2026-2) · 
 | Juan Felipe Pastrana Ramirez | [jpastranar](https://github.com/jpastranar) |
 | Diego Alberto Romero Olmos | [dromeroo](https://github.com/dromeroo) |
 
+**Prototipo:** hay una primera versión funcionando en [`prototipo/`](prototipo/)
+(llamada desde el navegador, voz a texto, agente, voz de Rita, clasificador y panel, todo
+local y en CPU).
+
 **Contenido**
 
 1. [Propuesta](#1-propuesta)

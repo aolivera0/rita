@@ -1,0 +1,7 @@
+# Configuración local de agentes y skills (instalada en cada equipo)
+.agent/
+.agents/
+.claude/
+.gemini/
+.opencode/
+.impeccable/

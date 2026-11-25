@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rita · panel</title>
+<link rel="stylesheet" href="/estilos.css">
+<script src="/veredicto.js"></script>
+</head>
+<body>
+<header>
+  <h1>Rita <span>· panel</span></h1>
+  <nav><a href="/">Llamada</a><a href="/panel" class="activo">Panel</a></nav>
+</header>
+<main>
+  <div class="pestanas" role="tablist" aria-label="Secciones del panel">
+    <button role="tab" aria-selected="true" data-p="llamadas" class="activa">Llamadas</button>
+    <button role="tab" aria-selected="false" data-p="numeros">Números</button>
+    <button role="tab" aria-selected="false" data-p="modelo">Modelo</button>
+    <button role="tab" aria-selected="false" data-p="probar">Probar un texto</button>
+  </div>
+
+  <section id="p-llamadas" class="rejilla maestro-detalle">
+    <div class="columna-lista">
+      <div class="lista" id="lista"></div>
+      <p id="vacio" class="suave oculto">Todavía no hay llamadas. Haz una desde la pestaña <a href="/">Llamada</a>.</p>
+    </div>
+    <div class="tarjeta" id="detalle" tabindex="-1"><p class="suave" style="margin:0">Escoge una llamada para ver el detalle.</p></div>
+  </section>
+
+  <section id="p-numeros" class="tarjeta oculto">
+    <div class="fila" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">Números que han llamado</h2>
+      <a class="boton" href="/api/numeros.csv">Exportar CSV</a>
+    </div>
+    <div class="tabla-scroll"><table id="tabla-numeros"></table></div>
+    <p class="pequeno suave">El riesgo sale de la peor etiqueta que ha tenido el número (con las correcciones del usuario). Es una sugerencia: la lista no se publica ni se comparte sin revisión.</p>
+  </section>
+
+  <section id="p-modelo" class="tarjeta oculto"></section>
+
+  <section id="p-probar" class="rejilla oculto">
+    <div class="tarjeta">
+      <h2>Clasificar una transcripción</h2>
+      <textarea id="texto-libre" placeholder="Pega lo que dijo quien llama…">Buenas tardes, le habla Carlos del área de seguridad del Banco Andino. Detectamos un movimiento sospechoso en su tarjeta. Necesito que me confirme la clave que le llegó por mensaje, es urgente.</textarea>
+      <p style="margin:10px 0 0"><button id="btn-probar">Clasificar</button></p>
+    </div>
+    <div class="tarjeta" id="res-probar"><p class="suave" style="margin:0">Aquí sale la etiqueta, la confianza y las pistas.</p></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = Veredicto.esc;
+let meta = { categorias: {}, pistas: {}, metricas: {} };
+let filas = [], seleccion = null;
+const nombre = k => meta.categorias[k] || k;
+const fecha = s => new Date(s).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+const ancho = matchMedia('(min-width: 860px)');
+const FLECHA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+
+function idDelHash() { return decodeURIComponent(location.hash.slice(1)); }
+
+async function cargar() {
+  try {
+    filas = await (await fetch('/api/llamadas')).json();
+  } catch (e) {
+    $('lista').innerHTML = '<p class="error">No se pudieron cargar las llamadas. Revisa que el servidor esté corriendo y recarga la página.</p>';
+    return;
+  }
+  $('vacio').classList.toggle('oculto', filas.length > 0);
+  $('lista').innerHTML = filas.map(f => {
+    const l = f.llamada, c = f.clasificacion, et = f.etiqueta_usuario || c.etiqueta;
+    const quien = [l.datos.nombre, l.datos.entidad].filter(v => v && v !== '(no lo dijo)').join(' · ') || 'Sin datos';
+    return `<button class="item" data-id="${esc(l.id)}">
+      <strong>${esc(l.numero)}</strong><span class="chip ${et}">${esc(nombre(et))}</span>
+      <span class="suave pequeno">${esc(quien)}</span>
+      <span class="suave pequeno">${fecha(l.inicio)}</span></button>`;
+  }).join('');
+  document.querySelectorAll('.item').forEach(b => b.onclick = () => abrir(b.dataset.id));
+
+  const pedido = idDelHash();
+  if (pedido && filas.some(f => f.llamada.id === pedido)) verDetalle(pedido);
+  else if (seleccion && (ancho.matches || document.body.classList.contains('con-detalle')) &&
+           filas.some(f => f.llamada.id === seleccion)) verDetalle(seleccion, { sinMover: true });
+  else if (ancho.matches && filas.length) verDetalle(filas[0].llamada.id, { sinMover: true });
+}
+
+// Abrir una llamada queda en la URL: sirve para enlazarla y para volver con el botón Atrás.
+function abrir(id) {
+  if (idDelHash() === id) verDetalle(id);
+  else location.hash = encodeURIComponent(id);
+}
+
+function verDetalle(id, { sinMover } = {}) {
+  const f = filas.find(x => x.llamada.id === id);
+  if (!f) return;
+  seleccion = id;
+  document.querySelectorAll('.item').forEach(b => {
+    const sel = b.dataset.id === id;
+    b.classList.toggle('sel', sel);
+    b.setAttribute('aria-current', sel ? 'true' : 'false');
+  });
+  const l = f.llamada, c = f.clasificacion;
+  const turnos = l.turnos.map(t =>
+    `<div class="burbuja ${t.hablante}">${esc(t.texto || '(silencio)')}<small>${t.hablante === 'rita' ? 'Rita' : 'Quien llama'} · ${t.t} s</small></div>`).join('');
+  const opciones = ['', ...Object.keys(meta.categorias)].map(k =>
+    `<option value="${k}" ${k === (f.etiqueta_usuario || '') ? 'selected' : ''}>${k ? esc(nombre(k)) : 'Sin corregir'}</option>`).join('');
+  const lat = l.latencias_ms.length ? [...l.latencias_ms].sort((a, b) => a - b) : null;
+  const med = lat ? (lat.length % 2 ? lat[(lat.length - 1) / 2] : (lat[lat.length / 2 - 1] + lat[lat.length / 2]) / 2) : null;
+  const dato = v => v && v !== '(no lo dijo)' ? `<dd>${esc(v)}</dd>` : `<dd class="vacio">${v ? 'No lo dijo' : '—'}</dd>`;
+
+  $('detalle').innerHTML =
+    `<button class="secundario volver" type="button" id="volver">${FLECHA}Llamadas</button>
+     <div class="cabecera-detalle"><h2 class="titulo-detalle">${esc(l.numero)}</h2>
+       <p class="suave pequeno">${fecha(l.inicio)}</p></div>` +
+    Veredicto.bloque(c, { datos: l.datos, corregida: f.etiqueta_usuario, nombres: meta.categorias }) +
+    `<div class="seccion"><h3>Lo que Rita averiguó</h3><dl class="datos">
+       <dt>Nombre</dt>${dato(l.datos.nombre)}<dt>Entidad</dt>${dato(l.datos.entidad)}<dt>Motivo</dt>${dato(l.datos.motivo)}</dl></div>
+     <div class="seccion"><h3>Pistas</h3>${Veredicto.pistas(c, meta.pistas)}</div>
+     <div class="seccion"><h3>Probabilidades del modelo</h3>${Veredicto.barras(c, meta.categorias)}</div>
+     <div class="seccion"><h3>Transcripción</h3><div class="chat">${turnos}</div></div>
+     <div class="seccion"><h3>Corregir etiqueta</h3>
+       <div class="fila"><div class="crece"><select id="corregir" aria-label="Etiqueta correcta">${opciones}</select></div>
+         <button class="secundario" id="guardar">Guardar</button>
+         <button class="peligro" id="borrar">Borrar registro</button></div></div>
+     <div class="seccion"><h3>Detalles técnicos</h3>
+       <p class="pequeno suave" style="margin:0">Clasificador: ${esc(c.modelo)} · Agente: ${esc(l.agente || 'formulario')}${med !== null ? ` · Latencia mediana: ${(med / 1000).toFixed(2)} s` : ''}<br>
+       Las pistas son indicios, no una explicación completa de la decisión.</p></div>`;
+
+  $('volver').onclick = () => { location.hash = ''; };
+  $('guardar').onclick = async () => {
+    await fetch(`/api/llamadas/${id}/etiqueta`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ etiqueta: $('corregir').value || null }) });
+    cargar();
+  };
+  $('borrar').onclick = async () => {
+    if (!confirm('¿Borrar esta llamada y su transcripción? No se puede deshacer.')) return;
+    await fetch(`/api/llamadas/${id}`, { method: 'DELETE' });
+    seleccion = null;
+    $('detalle').innerHTML = '<p class="suave" style="margin:0">Llamada borrada.</p>';
+    if (location.hash) location.hash = '';
+    cargar();
+  };
+
+  document.body.classList.add('con-detalle');
+  if (!sinMover) {
+    if (!ancho.matches) window.scrollTo(0, 0);
+    $('detalle').scrollTop = 0;
+    $('detalle').focus({ preventScroll: true });
+  }
+}
+
+function cerrarDetalle() {
+  document.body.classList.remove('con-detalle');
+  const item = seleccion && document.querySelector(`.item[data-id="${CSS.escape(seleccion)}"]`);
+  if (item && !ancho.matches) { item.scrollIntoView({ block: 'center' }); item.focus({ preventScroll: true }); }
+}
+
+window.addEventListener('hashchange', () => {
+  const id = idDelHash();
+  if (id) { mostrarPestana('llamadas'); verDetalle(id); }
+  else cerrarDetalle();
+});
+
+async function cargarNumeros() {
+  const ns = await (await fetch('/api/numeros')).json();
+  $('tabla-numeros').innerHTML = '<tr><th>Número</th><th>Llamadas</th><th>Etiqueta más frecuente</th><th>Riesgo</th><th>Última</th></tr>' +
+    (ns.length ? ns.map(n => `<tr><td>${esc(n.numero)}</td><td>${n.llamadas}</td>
+      <td>${esc(nombre(n.etiqueta_frecuente))}</td><td><span class="chip ${n.riesgo}">${n.riesgo}</span></td>
+      <td>${fecha(n.ultima)}</td></tr>`).join('') : '<tr><td colspan="5" class="suave">Sin números todavía.</td></tr>');
+}
+
+function pintarModelo() {
+  const m = meta.metricas, cats = m.categorias;
+  const cab = '<tr><th>Real ↓ / Predicha →</th>' + cats.map(c => `<th>${esc(nombre(c))}</th>`).join('') + '</tr>';
+  const cuerpo = m.matriz_confusion.map((fila, i) => `<tr><th>${esc(nombre(cats[i]))}</th>` +
+    fila.map((v, j) => `<td class="${i === j ? 'diag' : ''}">${v}</td>`).join('') + '</tr>').join('');
+  $('p-modelo').innerHTML = `<h2>Clasificador: ${esc(meta.modelo)}</h2>
+    <div class="aviso">Datos de juguete: ${m.ejemplos} conversaciones generadas a partir de ${m.guiones} guiones. Sirven para que el prototipo funcione, no para sacar conclusiones.</div>
+    <div class="cifras">
+      <div class="cifra"><b>${m.f1_macro}</b>F1 macro</div>
+      <div class="cifra"><b>${Math.round(m.exactitud * 100)} %</b>exactitud</div>
+      <div class="cifra"><b>${Math.round(m.legitimas_mal_marcadas * 100)} %</b>legítimas mal marcadas</div>
+    </div>
+    <p class="pequeno suave">Validación cruzada de 5 partes <b>agrupada por guion</b>: las variaciones de un guion nunca quedan a la vez en entrenamiento y en prueba. Por eso las cifras son bajas: el modelo tiene que reconocer guiones que nunca vio.</p>
+    <h2 style="margin-top:16px">Matriz de confusión</h2>
+    <div class="tabla-scroll"><table class="matriz">${cab}${cuerpo}</table></div>`;
+}
+
+async function probar() {
+  const r = await fetch('/api/clasificar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texto: $('texto-libre').value }) });
+  const c = await r.json();
+  $('res-probar').innerHTML = Veredicto.bloque(c, { nombres: meta.categorias }) +
+    `<div class="seccion"><h3>Pistas</h3>${Veredicto.pistas(c, meta.pistas)}</div>` +
+    `<div class="seccion"><h3>Probabilidades del modelo</h3>${Veredicto.barras(c, meta.categorias)}</div>`;
+}
+
+function mostrarPestana(p) {
+  document.querySelectorAll('.pestanas button').forEach(x => {
+    const activa = x.dataset.p === p;
+    x.classList.toggle('activa', activa);
+    x.setAttribute('aria-selected', activa ? 'true' : 'false');
+  });
+  for (const q of ['llamadas', 'numeros', 'modelo', 'probar']) $('p-' + q).classList.toggle('oculto', q !== p);
+  if (p !== 'llamadas') document.body.classList.remove('con-detalle');
+  if (p === 'numeros') cargarNumeros();
+}
+
+document.querySelectorAll('.pestanas button').forEach(b => b.onclick = () => {
+  mostrarPestana(b.dataset.p);
+  if (b.dataset.p === 'llamadas') cargar();
+});
+$('btn-probar').onclick = probar;
+
+fetch('/api/modelo').then(r => r.json()).then(m => { meta = m; pintarModelo(); cargar(); });
+</script>
+</body>
+</html>

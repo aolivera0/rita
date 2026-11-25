@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rita · llamada</title>
+<link rel="stylesheet" href="/estilos.css">
+<script src="/veredicto.js"></script>
+</head>
+<body>
+<header>
+  <h1>Rita <span>· prototipo</span></h1>
+  <nav><a href="/" class="activo">Llamada</a><a href="/panel">Panel</a></nav>
+</header>
+<main>
+  <div class="rejilla">
+    <section class="tarjeta">
+      <h2>Llamada de prueba</h2>
+      <p class="suave pequeno" style="margin-top:0">Haz de cuenta que eres quien llama desde un número desconocido. Rita contesta, te pregunta quién eres, de dónde llamas y qué necesitas, y al colgar clasifica la llamada.</p>
+      <div class="fila">
+        <div class="crece">
+          <label for="numero">Número que llama</label>
+          <input id="numero" inputmode="tel">
+        </div>
+        <button id="llamar">Llamar</button>
+        <button id="colgar" class="peligro oculto">Colgar</button>
+      </div>
+
+      <div class="estado" aria-live="polite"><div class="punto" id="punto"></div><span id="estado">Sin llamada</span></div>
+      <div class="medidor" aria-hidden="true"><div id="nivel"></div></div>
+      <div id="error" class="error oculto" role="alert"><span id="error-texto"></span><button id="reintentar" type="button">Reintentar</button></div>
+
+      <div class="chat" id="chat" role="log" aria-live="polite" aria-label="Conversación"></div>
+
+      <form class="fila oculto" id="formTexto" style="margin-top:14px">
+        <div class="crece">
+          <label for="texto" id="texto-etiqueta">¿Sin micrófono? Escribe lo que diría quien llama</label>
+          <input id="texto" autocomplete="off" placeholder="Hola, le habla Carlos del Banco Andino…">
+        </div>
+        <button class="secundario" type="submit">Enviar</button>
+      </form>
+
+      <section id="resultado" class="resultado oculto" tabindex="-1" aria-label="Resultado de la llamada"></section>
+    </section>
+
+    <aside style="display:grid;gap:16px;align-content:start">
+      <section class="tarjeta">
+        <h2>Lo que Rita averiguó</h2>
+        <dl class="datos">
+          <dt>Nombre</dt><dd id="d-nombre" class="vacio">—</dd>
+          <dt>Entidad</dt><dd id="d-entidad" class="vacio">—</dd>
+          <dt>Motivo</dt><dd id="d-motivo" class="vacio">—</dd>
+        </dl>
+      </section>
+      <section class="tarjeta">
+        <h2>Latencia</h2>
+        <div id="latencia" class="pequeno suave">Tiempo que tarda Rita en responder desde que terminas de hablar.</div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const estado = { id: null, ocupado: false, terminando: false, conMicrofono: false, latencias: [] };
+let meta = { categorias: {}, pistas: {} };
+fetch('/api/modelo').then(r => r.json()).then(m => meta = m).catch(() => {});
+
+$('numero').value = '+57 3' + Math.floor(10 + Math.random() * 90) + ' ' +
+  Math.floor(100 + Math.random() * 900) + ' ' + Math.floor(1000 + Math.random() * 9000);
+
+function ponerEstado(texto, clase) {
+  $('estado').textContent = texto;
+  $('punto').className = 'punto ' + (clase || '');
+}
+
+function estadoEsperando() {
+  if (estado.conMicrofono) ponerEstado('Escuchando', 'escuchando');
+  else ponerEstado('Escribe abajo lo que diría quien llama', '');
+}
+
+let reintento = null;
+function mostrarError(texto, accion) {
+  $('error-texto').textContent = texto;
+  reintento = accion;
+  $('reintentar').classList.toggle('oculto', !accion);
+  $('error').classList.remove('oculto');
+}
+function ocultarError() { $('error').classList.add('oculto'); reintento = null; }
+
+function burbuja(quien, texto, extra) {
+  const b = document.createElement('div');
+  b.className = 'burbuja ' + quien;
+  b.textContent = texto || '(silencio)';
+  if (extra) { const s = document.createElement('small'); s.textContent = extra; b.appendChild(s); }
+  $('chat').appendChild(b);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return b;
+}
+
+function mostrarDatos(d) {
+  for (const k of ['nombre', 'entidad', 'motivo']) {
+    const v = d[k];
+    const el = $('d-' + k);
+    el.textContent = v || '—';
+    el.className = v && v !== '(no lo dijo)' ? '' : 'vacio';
+  }
+}
+
+function mediana(xs) {
+  const o = [...xs].sort((a, b) => a - b), m = Math.floor(o.length / 2);
+  return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
+}
+
+function mostrarLatencia(t, modoTexto) {
+  estado.latencias.push(t.total);
+  const detalle = modoTexto
+    ? `Modo texto: no hubo voz a texto · agente ${t.agente} ms · texto a voz ${t.texto_a_voz} ms`
+    : `Voz a texto ${t.voz_a_texto} ms · agente ${t.agente} ms · texto a voz ${t.texto_a_voz} ms`;
+  $('latencia').innerHTML =
+    `<div class="cifras"><div class="cifra"><b>${(t.total / 1000).toFixed(2)} s</b>último turno</div>` +
+    `<div class="cifra"><b>${(mediana(estado.latencias) / 1000).toFixed(2)} s</b>mediana</div></div>` +
+    `<p class="pequeno suave" style="margin:10px 0 0">${detalle}</p>`;
+}
+
+function reproducir(b64) {
+  return new Promise(res => {
+    let listo = false;
+    const fin = () => { if (!listo) { listo = true; setTimeout(res, 250); } };
+    const a = new Audio('data:audio/wav;base64,' + b64);
+    a.onended = a.onerror = fin;
+    a.play().catch(fin);
+    // Por si el navegador nunca avisa que terminó: duración del WAV (22 050 Hz, 16 bits) + 1 s.
+    const segundos = (b64.length * 0.75 - 44) / 44100;
+    setTimeout(fin, (segundos + 1) * 1000);
+  });
+}
+
+async function pedir(url, opciones) {
+  const r = await fetch(url, opciones);
+  if (!r.ok) {
+    const e = new Error(await r.text().catch(() => r.statusText));
+    e.status = r.status;
+    throw e;
+  }
+  return r.json();
+}
+
+// ---------- Micrófono y detección de voz ----------
+const VAD = { umbralMin: 0.012, silencioMs: 900, minVozMs: 300, maxVozMs: 15000, preRollMs: 400 };
+let ctx, fuente, proc, flujo;
+let piso = 0.005, hablando = false, buffer = [], preRoll = [], ultimaVoz = 0, inicioVoz = 0;
+
+async function abrirMicrofono() {
+  flujo = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  fuente = ctx.createMediaStreamSource(flujo);
+  proc = ctx.createScriptProcessor(4096, 1, 1);
+  fuente.connect(proc); proc.connect(ctx.destination);
+  proc.onaudioprocess = e => procesarTrozo(new Float32Array(e.inputBuffer.getChannelData(0)));
+}
+
+function cerrarMicrofono() {
+  try { proc && proc.disconnect(); fuente && fuente.disconnect(); } catch (_) {}
+  flujo && flujo.getTracks().forEach(t => t.stop());
+  try { ctx && ctx.close && ctx.close(); } catch (_) {}
+  ctx = null; flujo = null;
+  $('nivel').style.width = '0';
+}
+
+function procesarTrozo(x) {
+  let s = 0; for (const v of x) s += v * v;
+  const rms = Math.sqrt(s / x.length);
+  $('nivel').style.width = Math.min(100, rms * 900) + '%';
+  if (!estado.id || estado.ocupado) { hablando = false; buffer = []; preRoll = []; return; }
+
+  const ahora = performance.now();
+  const umbral = Math.max(VAD.umbralMin, piso * 3.5);
+  const durTrozo = x.length / ctx.sampleRate * 1000;
+
+  if (!hablando) {
+    piso = piso * 0.95 + rms * 0.05;
+    preRoll.push(x);
+    while (preRoll.length * durTrozo > VAD.preRollMs) preRoll.shift();
+    if (rms > umbral) {
+      hablando = true; inicioVoz = ahora; ultimaVoz = ahora;
+      buffer = [...preRoll]; preRoll = [];
+      ponerEstado('Te escucho…', 'escuchando');
+    }
+    return;
+  }
+  buffer.push(x);
+  if (rms > umbral) ultimaVoz = ahora;
+  const dur = ahora - inicioVoz;
+  if (ahora - ultimaVoz > VAD.silencioMs || dur > VAD.maxVozMs) {
+    hablando = false;
+    const trozos = buffer; buffer = [];
+    if (ultimaVoz - inicioVoz >= VAD.minVozMs) enviarTurno({ audio: aWav(trozos, ctx.sampleRate) });
+    else estadoEsperando();
+  }
+}
+
+function aWav(trozos, tasa) {
+  const largo = trozos.reduce((n, t) => n + t.length, 0);
+  const todo = new Float32Array(largo); let o = 0;
+  for (const t of trozos) { todo.set(t, o); o += t.length; }
+  const destino = 16000, paso = tasa / destino, n = Math.floor(largo / paso);
+  const pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = Math.max(-1, Math.min(1, todo[Math.floor(i * paso)]));
+    pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+  }
+  const buf = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(buf);
+  const esc = (p, s) => [...s].forEach((c, i) => dv.setUint8(p + i, c.charCodeAt(0)));
+  esc(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length * 2, true); esc(8, 'WAVE'); esc(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, destino, true); dv.setUint32(28, destino * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); esc(36, 'data');
+  dv.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buf, 44).set(pcm);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+// ---------- Flujo de la llamada ----------
+async function hablarRita(texto, audio) {
+  burbuja('rita', texto);
+  ponerEstado('Rita está hablando', 'hablando');
+  await reproducir(audio);
+}
+
+async function enviarTurno({ audio, texto }) {
+  if (!estado.id || estado.ocupado) return;
+  estado.ocupado = true;
+  ocultarError();
+  // Se muestra de una vez lo que dijo quien llama; con voz, se completa al transcribir.
+  const propia = burbuja('llamante pendiente', audio ? 'Transcribiendo…' : texto);
+  ponerEstado('Rita está pensando…', 'procesando');
+  const fd = new FormData();
+  if (audio) fd.append('audio', audio, 'turno.wav'); else fd.append('texto', texto);
+  try {
+    const d = await pedir(`/api/llamadas/${estado.id}/turno`, { method: 'POST', body: fd });
+    propia.textContent = d.transcripcion || '(silencio)';
+    propia.classList.remove('pendiente');
+    mostrarDatos(d.datos);
+    mostrarLatencia(d.tiempos_ms, !audio);
+    await hablarRita(d.respuesta, d.audio);
+    if (d.terminar) return colgar('rita');
+  } catch (e) {
+    console.error(e);
+    propia.remove();
+    if (e.status === 404) {
+      mostrarError('Esta llamada ya no existe en el servidor (quizá se reinició). Empieza una nueva.', null);
+      return terminarEnPantalla();
+    }
+    mostrarError('Rita no pudo procesar esa frase. Revisa que el servidor siga corriendo y repítela.', null);
+  }
+  estado.ocupado = false;
+  if (estado.id) estadoEsperando();
+}
+
+function terminarEnPantalla() {
+  cerrarMicrofono();
+  estado.id = null; estado.terminando = false; estado.ocupado = false;
+  $('colgar').classList.add('oculto'); $('llamar').classList.remove('oculto');
+  $('llamar').disabled = false; $('numero').disabled = false;
+  $('formTexto').classList.add('oculto');
+}
+
+async function llamar() {
+  ocultarError();
+  $('llamar').disabled = true; $('numero').disabled = true;
+  ponerEstado('Conectando…', 'procesando');
+  $('chat').innerHTML = ''; $('resultado').classList.add('oculto');
+  mostrarDatos({}); estado.latencias = [];
+  $('latencia').textContent = 'Tiempo que tarda Rita en responder desde que terminas de hablar.';
+  $('texto').placeholder = 'Hola, le habla Carlos del Banco Andino…';
+
+  estado.conMicrofono = true;
+  try { await abrirMicrofono(); } catch (e) {
+    estado.conMicrofono = false;
+    console.warn('Sin micrófono:', e);
+  }
+  $('texto-etiqueta').textContent = estado.conMicrofono
+    ? '¿Prefieres escribir? Escribe lo que diría quien llama'
+    : 'Sin micrófono: escribe lo que diría quien llama';
+
+  let d;
+  try {
+    d = await pedir('/api/llamadas', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero: $('numero').value }) });
+  } catch (e) {
+    console.error(e);
+    cerrarMicrofono();
+    $('llamar').disabled = false; $('numero').disabled = false;
+    ponerEstado('Sin llamada', '');
+    mostrarError('No se pudo conectar con el servidor de Rita. Revisa que esté corriendo.', llamar);
+    return;
+  }
+  estado.id = d.id; estado.ocupado = true;
+  $('llamar').classList.add('oculto'); $('colgar').classList.remove('oculto');
+  $('formTexto').classList.remove('oculto');
+  await hablarRita(d.respuesta, d.audio);
+  estado.ocupado = false;
+  estadoEsperando();
+}
+
+async function colgar(quien = 'usuario') {
+  if (!estado.id || estado.terminando) return;
+  estado.terminando = true; estado.ocupado = true;
+  ocultarError();
+  ponerEstado('Clasificando la llamada…', 'procesando');
+  $('colgar').disabled = true;
+  let d;
+  try {
+    d = await pedir(`/api/llamadas/${estado.id}/colgar`, { method: 'POST' });
+  } catch (e) {
+    console.error(e);
+    $('colgar').disabled = false;
+    estado.terminando = false;
+    if (e.status === 404) {
+      mostrarError('El servidor ya no tenía esta llamada, así que no quedó clasificada. Empieza una nueva.', null);
+      return terminarEnPantalla();
+    }
+    ponerEstado('No se pudo clasificar', '');
+    mostrarError('No se pudo clasificar la llamada. Revisa que el servidor siga corriendo.', () => colgar(quien));
+    return;
+  }
+  const id = estado.id;
+  $('colgar').disabled = false;
+  terminarEnPantalla();
+  burbuja('sistema', quien === 'rita' ? 'Rita colgó la llamada' : 'Colgaste la llamada');
+  ponerEstado('Llamada terminada', '');
+  mostrarResultado(d, id);
+}
+
+function mostrarResultado(d, id) {
+  const c = d.clasificacion;
+  const r = $('resultado');
+  r.innerHTML =
+    Veredicto.bloque(c, { datos: d.llamada.datos, nombres: meta.categorias }) +
+    `<div class="seccion"><h3>Pistas</h3>${Veredicto.pistas(c, meta.pistas)}</div>` +
+    `<div class="seccion"><h3>Probabilidades del modelo</h3>${Veredicto.barras(c, meta.categorias)}</div>` +
+    `<p style="margin:14px 0 0"><a class="boton" href="/panel#${encodeURIComponent(id)}">Ver esta llamada en el panel</a></p>`;
+  r.classList.remove('oculto', 'aparece');
+  void r.offsetWidth;
+  r.classList.add('aparece');
+  // Salto directo (el desplazamiento suave se queda a medias en algunos navegadores);
+  // la animación del bloque marca el momento.
+  window.scrollTo({ top: r.getBoundingClientRect().top + window.scrollY - 16, behavior: 'auto' });
+  r.focus({ preventScroll: true });
+}
+
+$('llamar').onclick = llamar;
+$('colgar').onclick = () => colgar('usuario');
+$('reintentar').onclick = () => { const a = reintento; ocultarError(); a && a(); };
+$('formTexto').onsubmit = e => {
+  e.preventDefault();
+  const t = $('texto').value.trim();
+  if (!t || estado.ocupado) return;
+  $('texto').value = '';
+  $('texto').placeholder = 'Escribe la siguiente respuesta…';
+  enviarTurno({ texto: t });
+};
+</script>
+</body>
+</html>
