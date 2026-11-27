@@ -1,0 +1,3 @@
+scikit-learn
+numpy
+httpx  # solo para generar_variaciones.py con API
