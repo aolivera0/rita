@@ -115,17 +115,21 @@ del equipo. Sus estafas son de EE. UU. (Seguro Social, IRS), así que no se trad
 literalmente: se adaptan a la modalidad colombiana equivalente, y en el informe se declara
 que se usaron como base.
 
-## Reparto sugerido de los ~90 guiones
+## Reparto de los guiones
+
+Se escribieron 140 guiones borrador (con 3 variaciones cada uno) en vez de ~90 con 5: el
+número de guiones distintos es lo que da confianza a la prueba, porque las variaciones de un
+guion se parecen entre sí.
 
 | Categoría | Guiones | De qué |
 |---|---|---|
-| `estafa` | 30 | E1–E18: 2 de E1, E2, E5, E9, E10 y E11 (las más reportadas); 1–2 del resto |
-| `legitima` | 20 | L1–L5 (al menos 8 casos difíciles) más domicilios, citas médicas, conocidos |
-| `comercial` | 10 | M1: planes, tarjetas, seguros, créditos sin pago previo, clubes |
-| `cobranza` | 10 | C1 con distintos acreedores y tonos (firme pero dentro de la ley) |
-| `encuesta` | 8 | S1 |
-| `equivocada` | 6 | Incluyendo «¿hablo con…?» que no es cobranza |
-| `no_identificable` | 6 | N1 y llamadas cortadas |
+| `estafa` | 42 | E1–E18: 3 de E1, E2, E5, E9, E10 y E11 (las más reportadas); 2 del resto |
+| `legitima` | 30 | L1–L5 (6 del banco real) más citas médicas, domicilios, colegio, servicios |
+| `comercial` | 16 | M1: planes, tarjetas, seguros, créditos sin pago previo, clubes |
+| `cobranza` | 16 | C1 con distintos acreedores y tonos (firme pero dentro de la ley) |
+| `encuesta` | 12 | S1 |
+| `equivocada` | 12 | Incluyendo «¿hablo con…?» que no es cobranza |
+| `no_identificable` | 12 | N1 y llamadas cortadas |
 
 Las estafas tienen más guiones porque hay más modalidades distintas; el desbalance real
 (muchas más estafas que encuestas) lo maneja el peso de las clases al entrenar.

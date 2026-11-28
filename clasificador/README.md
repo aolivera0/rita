@@ -31,13 +31,25 @@ resultados/ ◄──evaluar── particion.json (+ .lock) ◄──particionar
    {"guion_id": "estafa-banco-01", "categoria": "estafa", "autor": "aolivera0", "referencia": "llamada que recibió mi mamá, oct. 2026", "turnos": ["Buenas tardes, le hablo del área de seguridad de su banco.", "Para bloquear la compra necesito el código que le acaba de llegar."]}
    ```
 
-   Meta: ~10 guiones por categoría y ~20 de `legitima`, con al menos un tercio de casos
-   difíciles. Revisen el formato con `python validar.py`.
+   Los campos `modalidad` (código del [catálogo](modalidades_colombia.md), p. ej. `E5`) y
+   `dificil` (`true` para los casos difíciles) son opcionales y sirven para analizar
+   errores. Revisen el formato con `python validar.py`.
 
-2. **Generar variaciones** (~5 por guion) con un modelo de lenguaje:
+   **Estado:** hay 140 guiones borrador (`autor: claude-borrador`), escritos con IA a
+   partir del catálogo: 42 de estafa, 30 legítimas, 16 comerciales, 16 cobranzas, 12
+   encuestas, 12 equivocadas y 12 no identificables, con 25–47 % de casos difíciles por
+   categoría. Cada uno tiene 3 variaciones (`fuente: llm:claude-opus-5.5`): una corta de 2
+   turnos, una larga de 6 y una menos obvia, para que el largo no delate la categoría (un
+   árbol que solo mira el largo baja de F1 0,40 sobre los guiones a 0,28 con las
+   variaciones). En total hay 560 conversaciones listas para etiquetar. El equipo debe
+   revisarlas, corregir lo que no suene real y agregar guiones propios (llamadas que hayan
+   recibido). Se prefieren más guiones con pocas variaciones que pocos guiones con muchas:
+   lo que hace confiable la prueba es el número de guiones distintos.
+
+2. **Generar variaciones** (3 por guion) con un modelo de lenguaje:
 
    ```bash
-   python generar_variaciones.py --solo-prompts prompts/       # sin API: pegar en cualquier chat
+   python generar_variaciones.py --solo-prompts prompts/ --por-guion 3   # sin API: pegar en cualquier chat
    python generar_variaciones.py --importar prompts/ --fuente llm:gemini-web
    ```
 

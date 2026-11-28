@@ -4,7 +4,9 @@ Archivos de un directorio de datos (por defecto `clasificador/datos/`):
 
 - `guiones.jsonl`: un guion por línea.
     {"guion_id": "estafa-banco-01", "categoria": "estafa", "autor": "aolivera0",
-     "referencia": "llamada que recibió mi mamá, oct. 2026", "turnos": ["...", "..."]}
+     "referencia": "llamada que recibió mi mamá, oct. 2026", "turnos": ["...", "..."],
+     "modalidad": "E1", "dificil": false}
+  `modalidad` (código de modalidades_colombia.md) y `dificil` son opcionales.
 - `conversaciones.jsonl`: una conversación por línea. Las variaciones de un guion llevan
   su `guion_id`; un guion escrito a mano también puede ser su propia conversación.
     {"id": "estafa-banco-01-v03", "guion_id": "estafa-banco-01", "fuente": "llm:modelo",
