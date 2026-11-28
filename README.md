@@ -16,6 +16,9 @@ Proyecto final de *Introducción a los Sistemas Inteligentes* (UNAL, 2026-2) · 
 (llamada desde el navegador, voz a texto, agente, voz de Rita, clasificador y panel, todo
 local y en CPU).
 
+**Frente 1 (datos y clasificador):** guía de etiquetado, scripts de datos, etiquetado,
+partición y evaluación en [`clasificador/`](clasificador/).
+
 **Contenido**
 
 1. [Propuesta](#1-propuesta)

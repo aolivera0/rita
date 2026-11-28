@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+datos/ejemplo/
+prompts/
+datos/externos/
